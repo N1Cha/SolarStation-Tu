@@ -92,7 +92,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   </p>
   <p>    
     <span class="dht-labels">File Data</span>  
-    <button><i class="fas fa-sync" style="color:#68b0ab;"></i> </button> 
+    <button id="refreshButton"><i class="fas fa-sync" style="color:#68b0ab;"></i> </button>
     <p id="ptable" class="units" >%PTABLE%</p>  
   </p>
 </body>
@@ -130,7 +130,7 @@ setInterval(function ( ) {
   xhttp.send();
 }, 1000);
 
-var btn = document.querySelector("button");
+var btn = document.getElementById("refreshButton");
 btn.addEventListener( "click", function() {
   var xhttp = new XMLHttpRequest(); 
   xhttp.onreadystatechange = function() {
