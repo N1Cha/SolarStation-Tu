@@ -26,7 +26,8 @@ const long  gmtOffset_sec = 7200;
 const int   daylightOffset_sec = 3600;
 
 const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html>
+<!DOCTYPE HTML>
+<html id="htmlTag">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
@@ -39,16 +40,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     }
     h2 { font-size: 3.0rem; }
     p { font-size: 2.4rem; }
-    td, th {
-      padding: 5px;
-      border: 1px solid black;
-    }
-    table {
-      margin-left: auto;      
-      margin-right: auto;      
-      border-collapse: collapse;
-      border: 1px solid black;
-    }
     .units { font-size: 1.2rem; }
     .dht-labels
     {
@@ -90,15 +81,9 @@ const char index_html[] PROGMEM = R"rawliteral(
     <span id="cpanel">%CPANEL%</span>
     <sup class="units">A</sup>
   </p>
-  <hr>
-  <p>    
-    <h3 class="dht-labels"><b>File Data</b></h3>
-    <div>
-    <button id="refreshButton"><i class="fas fa-sync" style="color:#68b0ab;"></i></button>
-    <button id="deleteButton"><i class="far fa-trash-alt" style="color:#ff0000;"></i></button>
-    </div>
-    <p id="ptable" class="units" >%PTABLE%</p>  
-  </p>
+  <div>
+    <button id="dataPage"><b>Show File Data</b></button>
+ </div>
 </body>
 <script>
 setInterval(function ( ) {
@@ -134,8 +119,58 @@ setInterval(function ( ) {
   xhttp.send();
 }, 1000);
 
+var pageBtn = document.getElementById("dataPage");
+
+pageBtn.addEventListener( "click", function() {
+  window.open(location.protocol + "//" + location.host +  "/data","_self");
+});
+</script>
+</html>)rawliteral";
+
+const char data_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+  <style>
+    html {
+     font-family: Arial;
+     display: inline-block;
+     margin: 0px auto;
+     text-align: center;
+    }
+    h2 { font-size: 3.0rem; }
+    td, th {
+      padding: 5px;
+      border: 1px solid black;
+    }
+    table {
+      margin-left: auto;      
+      margin-right: auto;     
+      border-collapse: collapse;
+      border: 1px solid black;
+    }
+    button{
+      margin: 10px;     
+    }
+  </style>
+</head>
+<body>
+  <h2>File Data</h2>
+  <div>
+    <button id="refreshButton"><i class="fas fa-sync" style="color:#68b0ab;"></i></button>
+    <button id="deleteButton"><i class="far fa-trash-alt" style="color:#ff0000;"></i></button>
+  </div>
+  <p id="ptable"> </p>   
+  <p>
+    <button id="backButton"><b>Back to Solar Data</b></button>
+  </p>
+</body>
+<script>
 var refreshBtn = document.getElementById("refreshButton");
 var deleteBtn = document.getElementById("deleteButton");
+var backBtn = document.getElementById("backButton");
 
 refreshBtn.addEventListener( "click", function() {
   var xhttp = new XMLHttpRequest(); 
@@ -144,7 +179,7 @@ refreshBtn.addEventListener( "click", function() {
       document.getElementById("ptable").innerHTML = this.responseText;
     }
   };
-  xhttp.open( "GET", "/time", true);
+  xhttp.open( "GET", "/refresh", true);
   xhttp.send();
 });
 
@@ -157,6 +192,10 @@ deleteBtn.addEventListener( "click", function() {
   };
   xhttp.open( "GET", "/delete", true);
   xhttp.send();
+});
+
+backBtn.addEventListener( "click", function() {
+  window.open(location.protocol + "//" + location.host,"_self");
 });
 </script>
 </html>)rawliteral";
@@ -193,7 +232,12 @@ void setup()
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
   {
     request->send_P(200, "text/html", index_html, processor);
-  });
+  });  
+  
+  server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    request->send_P(200, "text/html", data_html);
+  });  
   
   server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request)
   {
@@ -209,12 +253,12 @@ void setup()
   {
     request->send_P(200, "text/plain", String(dht.readTemperature()).c_str());
   });
-
-  server.on("/time", HTTP_GET, [](AsyncWebServerRequest *request)
-  {    
-    String table  = String(createHtmlTable(getTableRows(),getDate()));
+  
+  server.on("/refresh", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    String table = createHtmlTable(getTableRows(),getDate());
     Serial.println("Table Refresh");  
-    request->send_P(200, "text/plain", String(table).c_str());
+    request->send_P(200, "text/plain", table.c_str());
   });
 
   server.on("/delete", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -409,8 +453,6 @@ String processor(const String& var)
   {
     return String(dht.readTemperature());
   }
-  else if(var == "PTABLE");
-  {
-  }
+  
   return String();
 }
