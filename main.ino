@@ -8,7 +8,7 @@
 #include "time.h"
 
 #define DHTPIN 5 
-#define DHTTYPE DHT11 
+#define DHTTYPE DHT11
 //#define DHTTYPE DHT22
 //#define DHTTYPE DHT21
 
@@ -16,10 +16,12 @@ AsyncWebServer server(80);
 Adafruit_BME280 bme;
 DHT dht(DHTPIN, DHTTYPE);
 File dataFile;
+int hDay = -1;
 
 const char* ssid = "subZero";
 const char* password = "nikola9696a";
 const String fileName = "/data.text";
+const String historyfileName = "/history.text";
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 7200;
@@ -203,15 +205,20 @@ backBtn.addEventListener( "click", function() {
 // PROTOTYPES REGION --------------------------------------
 void fileConfiguration();
 void AddTableRowToFile();
-String createHtmlTable(String rows, String date);
+String createHtmlTable(String hRows, String dRows);
 String addTableRecord(String times, float temp, float humidity, float pt, float pv, float pa);
 void printLocalTime(String hour, String date);
 String getDate();
 String getTime();
-String processor(const String& var);
-String getTableRows();
+String replacer(const String& var);
+void addContentToFile(String fName, String content);
+String getFileContent(String fName);
 void printFileContent();
 void deleteFileContent(String fName);
+void verifyFileExistence(String fName);
+void verifyHistoryTime();
+bool isUpdateNeeded();
+String getFullTime();
 // PROTOTYPES REGION END ----------------------------------
 
 void setup()
@@ -231,7 +238,7 @@ void setup()
   Serial.println(WiFi.localIP());
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
   {
-    request->send_P(200, "text/html", index_html, processor);
+    request->send_P(200, "text/html", index_html, replacer);
   });  
   
   server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -256,7 +263,7 @@ void setup()
   
   server.on("/refresh", HTTP_GET, [](AsyncWebServerRequest *request)
   {
-    String table = createHtmlTable(getTableRows(),getDate());
+    String table = createHtmlTable(getFileContent(historyfileName),getFileContent(fileName));
     Serial.println("Table Refresh");  
     request->send_P(200, "text/plain", table.c_str());
   });
@@ -265,13 +272,14 @@ void setup()
   { 
     deleteFileContent(fileName);
     Serial.println("File Deleted");  
-    request->send_P(200, "text/plain", String(createHtmlTable(getTableRows(),getDate())).c_str());
+    request->send_P(200, "text/plain", String(createHtmlTable(getFileContent(historyfileName),getFileContent(fileName))).c_str());
   });
   
   server.begin();
   
   fileConfiguration();   
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  verifyHistoryTime();
 }
  
 void loop()
@@ -281,10 +289,17 @@ void loop()
 }
 
 // FILE REGION -----------------------------------
-String getTableRows()
+void addContentToFile(String fName, String content)
+{
+  dataFile = SPIFFS.open(fName,"a");
+  dataFile.println(content);
+  dataFile.close();
+}
+
+String getFileContent(String fName)
 {  
   String fileData = String();
-  dataFile = SPIFFS.open(fileName,"r");  
+  dataFile = SPIFFS.open(fName,"r");  
   while (dataFile.available()) 
   {
     char symbol = dataFile.read();
@@ -302,42 +317,39 @@ void fileConfiguration()
       Serial.println("An Error has occurred while mounting SPIFFS");
       return;
   }
-  
-  dataFile = SPIFFS.open(fileName,"r");
-  if (dataFile)
-  {
-    Serial.println("FileConfiguration: The file is ready!");
-  }
-  else
-  {
-    dataFile = SPIFFS.open(fileName,"w+");
-  }
-  
-  dataFile.close();
+
+  verifyFileExistence(fileName);
+  verifyFileExistence(historyfileName);  
 }
 
 void AddTableRowToFile()
-{  
-  String row = addTableRecord(getTime(),bme.readTemperature(),bme.readHumidity(),dht.readTemperature(),0,0);
+{ 
+  if(isUpdateNeeded())
+  {
+    deleteFileContent(historyfileName);
+    addContentToFile(historyfileName, getFileContent(fileName));
+    deleteFileContent(fileName);
+  }
+  
+  String row = addTableRecord(getFullTime(),bme.readTemperature(),bme.readHumidity(),dht.readTemperature(),0,0);
   dataFile = SPIFFS.open(fileName,"a");
   dataFile.println(row);
   dataFile.close();
 }
 
-String createHtmlTable(String rows, String date)
+String createHtmlTable(String hRows, String dRows)
 {
   String table = "<table>";  
   table += "<tr>";
-  table += "<th>Time ";
-  table += date;
-  table += "</th>";
+  table += "<th>Time</th>";
   table += "<th>Temperature</th>";
   table += "<th>Hunidity</th>";
   table += "<th>Solar Temp</th>";
   table += "<th>Solar Voltage</th>";
   table += "<th>Solar Current</th>";
   table += "</tr>";
-  table += rows;
+  table += hRows;
+  table += dRows;
   table += "</table>"; 
 
   return table;
@@ -386,8 +398,25 @@ void deleteFileContent(String fName)
   dataFile = SPIFFS.open(fName,"w+");
   dataFile.close();
 }
-// FILE REGION END -----------------------------------
 
+void verifyFileExistence(String fName)
+{
+  File file = SPIFFS.open(fName,"r");
+  if (!file)
+  {    
+    file = SPIFFS.open(fName,"w+");
+    Serial.print("The File is created");
+    Serial.println(fName);
+  }
+  else
+  {    
+    Serial.print("FileConfiguration: File is ready - ");
+    Serial.println(fName);
+  }
+  
+  file.close();
+}
+// FILE REGION END -----------------------------------
 // DATE TIME REGION ----------------------------------
 void printLocalTime(String hour, String date)
 {
@@ -436,9 +465,45 @@ String getTime()
   
   return hour;
 }
+
+void verifyHistoryTime()
+{
+  struct tm timeinfo;
+  getLocalTime(&timeinfo);
+  hDay = timeinfo.tm_mday;
+}
+
+bool isUpdateNeeded()
+{
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo))
+  {
+    Serial.println("isUpdateNeeded: Failed to obtain time");
+    return false;
+  }
+
+  if(hDay != timeinfo.tm_mday)
+  {
+    Serial.println("isUpdateNeeded: TRUE");
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+String getFullTime()
+{
+  String fullTime = getDate();
+  fullTime += " - ";
+  fullTime += getTime();
+
+  return fullTime;
+}
 // DATE TIME REGION END -----------------------------------
 
-String processor(const String& var)
+String replacer(const String& var)
 {
   Serial.println(var);
   if(var == "TEMPERATURE")
