@@ -59,7 +59,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   </style>
 </head>
 <body>
-  <h2>Solar Panel</h2>
+  <h2>Solar Station</h2>
   <p>
     <i class="fas fa-temperature-high" style="color:#ff7e67;"></i> 
     <span class="dht-labels">Temperature</span> 
@@ -90,9 +90,13 @@ const char index_html[] PROGMEM = R"rawliteral(
     <span id="cpanel">%CPANEL%</span>
     <sup class="units">A</sup>
   </p>
+  <hr>
   <p>    
-    <span class="dht-labels">File Data</span>  
-    <button id="refreshButton"><i class="fas fa-sync" style="color:#68b0ab;"></i> </button>
+    <h3 class="dht-labels"><b>File Data</b></h3>
+    <div>
+    <button id="refreshButton"><i class="fas fa-sync" style="color:#68b0ab;"></i></button>
+    <button id="deleteButton"><i class="far fa-trash-alt" style="color:#ff0000;"></i></button>
+    </div>
     <p id="ptable" class="units" >%PTABLE%</p>  
   </p>
 </body>
@@ -130,8 +134,10 @@ setInterval(function ( ) {
   xhttp.send();
 }, 1000);
 
-var btn = document.getElementById("refreshButton");
-btn.addEventListener( "click", function() {
+var refreshBtn = document.getElementById("refreshButton");
+var deleteBtn = document.getElementById("deleteButton");
+
+refreshBtn.addEventListener( "click", function() {
   var xhttp = new XMLHttpRequest(); 
   xhttp.onreadystatechange = function() {
     if (this.readyState == 4 && this.status == 200) {
@@ -139,6 +145,17 @@ btn.addEventListener( "click", function() {
     }
   };
   xhttp.open( "GET", "/time", true);
+  xhttp.send();
+});
+
+deleteBtn.addEventListener( "click", function() {
+  var xhttp = new XMLHttpRequest(); 
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("ptable").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open( "GET", "/delete", true);
   xhttp.send();
 });
 </script>
@@ -198,6 +215,13 @@ void setup()
     String table  = String(createHtmlTable(getTableRows(),getDate()));
     Serial.println("Table Refresh");  
     request->send_P(200, "text/plain", String(table).c_str());
+  });
+
+  server.on("/delete", HTTP_GET, [](AsyncWebServerRequest *request)
+  { 
+    deleteFileContent(fileName);
+    Serial.println("File Deleted");  
+    request->send_P(200, "text/plain", String(createHtmlTable(getTableRows(),getDate())).c_str());
   });
   
   server.begin();
