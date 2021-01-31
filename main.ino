@@ -329,6 +329,7 @@ void AddTableRowToFile()
     deleteFileContent(historyfileName);
     addContentToFile(historyfileName, getFileContent(fileName));
     deleteFileContent(fileName);
+    verifyHistoryTime();
   }
   
   String row = addTableRecord(getFullTime(),bme.readTemperature(),bme.readHumidity(),dht.readTemperature(),0,0);
@@ -471,6 +472,8 @@ void verifyHistoryTime()
   struct tm timeinfo;
   getLocalTime(&timeinfo);
   hDay = timeinfo.tm_mday;
+  Serial.print("hDay = ");
+  Serial.println(hDay);
 }
 
 bool isUpdateNeeded()
@@ -496,7 +499,7 @@ bool isUpdateNeeded()
 String getFullTime()
 {
   String fullTime = getDate();
-  fullTime += " - ";
+  fullTime += " ";
   fullTime += getTime();
 
   return fullTime;
