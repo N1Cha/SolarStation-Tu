@@ -9,8 +9,8 @@
 
 #define DHTPIN 5 
 #define DHTTYPE DHT11
-//#define DHTTYPE DHT22
-//#define DHTTYPE DHT21
+#define ONBOARD_LED  2
+#define DATA_RECORD_SECONDS 60
 
 AsyncWebServer server(80);
 Adafruit_BME280 bme;
@@ -24,8 +24,11 @@ const String fileName = "/data.text";
 const String historyfileName = "/history.text";
 
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 7200;
-const int   daylightOffset_sec = 3600;
+const long gmtOffset_sec = 7200;
+const int daylightOffset_sec = 3600;
+const int voltagePin = 4;
+const int currentPin = 15;
+int secondsCounter = DATA_RECORD_SECONDS;
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
@@ -52,7 +55,32 @@ const char index_html[] PROGMEM = R"rawliteral(
   </style>
 </head>
 <body>
-  <h2>Solar Station</h2>
+  <h2>PV Station</h2>
+      <p>
+    <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
+    <span class="dht-labels">PV Voltage</span> 
+    <span id="vpanel">%VPANEL%</span>
+    <sup class="units">V</sup>
+  </p>
+   <p>
+    <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
+    <span class="dht-labels">PV Current</span> 
+    <span id="cpanel">%CPANEL%</span>
+    <sup class="units">A</sup>
+  </p>
+  <p>
+    <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
+    <span class="dht-labels">PV Power</span> 
+    <span id="wpanel">%WPANEL%</span>
+    <sup class="units">W</sup>
+  </p>
+  <p>
+    <i class="fas fa-solar-panel" style="color:#68b0ab;"></i>
+    <i class="fas fa-thermometer-half" style="color:#68b0ab;"></i> 
+    <span class="dht-labels">PV Temprature</span> 
+    <span id="tpanel">%TPANEL%</span>
+    <sup class="units">&deg;C</sup>
+  </p>
   <p>
     <i class="fas fa-temperature-high" style="color:#ff7e67;"></i> 
     <span class="dht-labels">Temperature</span> 
@@ -64,25 +92,7 @@ const char index_html[] PROGMEM = R"rawliteral(
     <span class="dht-labels">Humidity</span>
     <span id="humidity">%HUMIDITY%</span>
     <sup class="units">&percnt;</sup>
-  </p>
-  <p>
-    <i class="fas fa-thermometer-half" style="color:#68b0ab;"></i> 
-    <span class="dht-labels">Solar Temprature</span> 
-    <span id="tpanel">%TPANEL%</span>
-    <sup class="units">&deg;C</sup>
-  </p>
-   <p>
-    <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
-    <span class="dht-labels">Solar Voltage</span> 
-    <span id="vpanel">%VPANEL%</span>
-    <sup class="units">V</sup>
-  </p>
-   <p>
-    <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
-    <span class="dht-labels">Solar Current</span> 
-    <span id="cpanel">%CPANEL%</span>
-    <sup class="units">A</sup>
-  </p>
+  </p> 
   <div>
     <button id="dataPage"><b>Show File Data</b></button>
  </div>
@@ -97,7 +107,7 @@ setInterval(function ( ) {
   };
   xhttp.open("GET", "/temperature", true);
   xhttp.send();
-}, 1000) ;
+}, 1000);
 
 setInterval(function ( ) {
   var xhttp = new XMLHttpRequest();
@@ -118,6 +128,39 @@ setInterval(function ( ) {
     }
   };
   xhttp.open("GET", "/tpanel", true);
+  xhttp.send();
+}, 1000);
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("vpanel").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/vpanel", true);
+  xhttp.send();
+}, 1000);
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("cpanel").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/cpanel", true);
+  xhttp.send();
+}, 1000);
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("wpanel").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/wpanel", true);
   xhttp.send();
 }, 1000);
 
@@ -206,7 +249,7 @@ backBtn.addEventListener( "click", function() {
 void fileConfiguration();
 void AddTableRowToFile();
 String createHtmlTable(String hRows, String dRows);
-String addTableRecord(String times, float temp, float humidity, float pt, float pv, float pa);
+String addTableRecord(String times, float temp, float humidity, float pt, float pv, float pa, float pw);
 void printLocalTime(String hour, String date);
 String getDate();
 String getTime();
@@ -219,10 +262,15 @@ void verifyFileExistence(String fName);
 void verifyHistoryTime();
 bool isUpdateNeeded();
 String getFullTime();
+float getVolage();
+float getCurrent();
+float getPower();
+void connectionLed(int ledPin);
 // PROTOTYPES REGION END ----------------------------------
 
 void setup()
 {
+  pinMode(ONBOARD_LED,OUTPUT);
   Serial.begin(115200);
   
   bme.begin(0x76);  
@@ -231,11 +279,13 @@ void setup()
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) 
   {
-    delay(1000);
     Serial.println("Connecting to WiFi..");
+    connectionLed(ONBOARD_LED);
   }
   
   Serial.println(WiFi.localIP());
+  digitalWrite (ONBOARD_LED, HIGH);
+  
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
   {
     request->send_P(200, "text/html", index_html, replacer);
@@ -255,6 +305,21 @@ void setup()
   {
     request->send_P(200, "text/plain", String(bme.readHumidity()).c_str());
   });
+  
+  server.on("/vpanel", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    request->send_P(200, "text/plain", String(getVolage()).c_str());
+  });
+  
+  server.on("/cpanel", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    request->send_P(200, "text/plain", String(getCurrent()).c_str());
+  });
+
+  server.on("/wpanel", HTTP_GET, [](AsyncWebServerRequest *request)
+  {
+    request->send_P(200, "text/plain", String(getPower()).c_str());
+  });
 
   server.on("/tpanel", HTTP_GET, [](AsyncWebServerRequest *request)
   {
@@ -271,7 +336,8 @@ void setup()
   server.on("/delete", HTTP_GET, [](AsyncWebServerRequest *request)
   { 
     deleteFileContent(fileName);
-    Serial.println("File Deleted");  
+    deleteFileContent(historyfileName);
+    Serial.println("Files Deleted");  
     request->send_P(200, "text/plain", String(createHtmlTable(getFileContent(historyfileName),getFileContent(fileName))).c_str());
   });
   
@@ -284,8 +350,26 @@ void setup()
  
 void loop()
 {
-  AddTableRowToFile();
-  delay(60000);
+  if(secondsCounter == DATA_RECORD_SECONDS)
+  {    
+    AddTableRowToFile();
+    secondsCounter = 0;
+  }
+  
+  while (WiFi.status() != WL_CONNECTED) 
+  {
+    Serial.println("Connecting to WiFi..");
+    connectionLed(ONBOARD_LED);
+  }
+
+  if(WiFi.status() == WL_CONNECTED)
+  { 
+    Serial.println(WiFi.localIP());
+    digitalWrite (ONBOARD_LED, HIGH);
+  }
+  
+  secondsCounter += 1;  
+  delay(1000);
 }
 
 // FILE REGION -----------------------------------
@@ -332,7 +416,7 @@ void AddTableRowToFile()
     verifyHistoryTime();
   }
   
-  String row = addTableRecord(getFullTime(),bme.readTemperature(),bme.readHumidity(),dht.readTemperature(),0,0);
+  String row = addTableRecord(getFullTime(),bme.readTemperature(),bme.readHumidity(),dht.readTemperature(),getVolage(),getCurrent(),getPower());
   dataFile = SPIFFS.open(fileName,"a");
   dataFile.println(row);
   dataFile.close();
@@ -345,9 +429,10 @@ String createHtmlTable(String hRows, String dRows)
   table += "<th>Time</th>";
   table += "<th>Temperature</th>";
   table += "<th>Hunidity</th>";
-  table += "<th>Solar Temp</th>";
-  table += "<th>Solar Voltage</th>";
-  table += "<th>Solar Current</th>";
+  table += "<th>PV Temperature</th>";
+  table += "<th>PV Voltage</th>";
+  table += "<th>PV Current</th>";
+  table += "<th>PV Power</th>";
   table += "</tr>";
   table += hRows;
   table += dRows;
@@ -356,7 +441,7 @@ String createHtmlTable(String hRows, String dRows)
   return table;
 }
 
-String addTableRecord(String times, float temp, float humidity, float pt, float pv, float pa)
+String addTableRecord(String times, float temp, float humidity, float pt, float pv, float pa, float pw)
 {
   String tableRow = String();
   tableRow += "<tr>";
@@ -376,6 +461,9 @@ String addTableRecord(String times, float temp, float humidity, float pt, float 
   tableRow += "</td>";
   tableRow += "<td>";
   tableRow += pa;
+  tableRow += "</td>";
+  tableRow += "<td>";
+  tableRow += pw;
   tableRow += "</td>";
   tableRow += "</tr>";
   tableRow += "\n";
@@ -506,6 +594,28 @@ String getFullTime()
 }
 // DATE TIME REGION END -----------------------------------
 
+// GET PANEL DATA REGION ----------------------------------
+float getVolage()
+{
+  int voltage = analogRead(voltagePin);
+  Serial.println(voltage);
+  float volts = 0.00081 * voltage;
+  return volts;
+}
+
+float getCurrent()
+{
+  return 1.0;
+}
+
+float getPower()
+{
+  float voltage = getVolage();
+  float current = getCurrent();
+  float power = voltage * current;
+  return power;
+}
+// GET PANEL DATA REGION END ------------------------------
 String replacer(const String& var)
 {
   Serial.println(var);
@@ -521,6 +631,26 @@ String replacer(const String& var)
   {
     return String(dht.readTemperature());
   }
+  else if(var == "CPANEL")
+  {
+    return String(getCurrent());
+  }
+  else if(var == "VPANEL")
+  {
+    return String(getVolage());
+  }
+  else if(var == "WPANEL")
+  {
+    return String(getPower());
+  }
   
   return String();
+}
+
+void connectionLed(int ledPin)
+{
+  digitalWrite (ledPin, HIGH);
+  delay(500);
+  digitalWrite (ledPin, LOW);  
+  delay(500);
 }
