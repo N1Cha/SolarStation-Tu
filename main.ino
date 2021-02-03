@@ -1,4 +1,3 @@
-//AUTO-REFRESH VARIANT.4
 #include "WiFi.h"
 #include "ESPAsyncWebServer.h"
 #include <Adafruit_Sensor.h>
@@ -17,6 +16,7 @@ Adafruit_BME280 bme;
 DHT dht(DHTPIN, DHTTYPE);
 File dataFile;
 int hDay = -1;
+int secondsCounter = DATA_RECORD_SECONDS;
 
 const char* ssid = "subZero";
 const char* password = "nikola9696a";
@@ -28,7 +28,6 @@ const long gmtOffset_sec = 7200;
 const int daylightOffset_sec = 3600;
 const int voltagePin = 4;
 const int currentPin = 15;
-int secondsCounter = DATA_RECORD_SECONDS;
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
