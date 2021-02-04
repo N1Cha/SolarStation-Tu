@@ -26,8 +26,8 @@ const String historyfileName = "/history.text";
 const char* ntpServer = "pool.ntp.org";
 const long gmtOffset_sec = 7200;
 const int daylightOffset_sec = 3600;
-const int voltagePin = 4;
-const int currentPin = 15;
+const int voltagePin = 32;
+const int currentPin = 4;
 
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
@@ -43,7 +43,23 @@ const char index_html[] PROGMEM = R"rawliteral(
      text-align: center;
     }
     h2 { font-size: 3.0rem; }
-    p { font-size: 2.4rem; }
+    .p-font { font-size: 2.4rem; }
+    ul {
+     list-style-type: none;
+     margin: 0;
+     padding: 0;
+     overflow: hidden;
+     background-color: #333;
+    }
+   li {  float: left; }
+   li p {
+     display: block;
+     color: white;
+     text-align: center;
+     padding: 14px 16px;
+     text-decoration: none;
+    }
+    li p:hover {  background-color: #111; }
     .units { font-size: 1.2rem; }
     .dht-labels
     {
@@ -54,39 +70,43 @@ const char index_html[] PROGMEM = R"rawliteral(
   </style>
 </head>
 <body>
+  <ul>
+    <li><p id="navLive">PV Station</p></li>
+    <li><p id="navFile">File Data</p></li>
+  </ul>
   <h2>PV Station</h2>
-      <p>
+  <p class="p-font">
     <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
     <span class="dht-labels">PV Voltage</span> 
     <span id="vpanel">%VPANEL%</span>
     <sup class="units">V</sup>
   </p>
-   <p>
+   <p class="p-font">
     <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
     <span class="dht-labels">PV Current</span> 
     <span id="cpanel">%CPANEL%</span>
     <sup class="units">A</sup>
   </p>
-  <p>
+  <p class="p-font">
     <i class="fas fa-solar-panel" style="color:#68b0ab;"></i> 
     <span class="dht-labels">PV Power</span> 
     <span id="wpanel">%WPANEL%</span>
     <sup class="units">W</sup>
   </p>
-  <p>
+  <p class="p-font">
     <i class="fas fa-solar-panel" style="color:#68b0ab;"></i>
     <i class="fas fa-thermometer-half" style="color:#68b0ab;"></i> 
     <span class="dht-labels">PV Temprature</span> 
     <span id="tpanel">%TPANEL%</span>
     <sup class="units">&deg;C</sup>
   </p>
-  <p>
+  <p class="p-font">
     <i class="fas fa-temperature-high" style="color:#ff7e67;"></i> 
     <span class="dht-labels">Temperature</span> 
     <span id="temperature">%TEMPERATURE%</span>
     <sup class="units">&deg;C</sup>
   </p>
-  <p>
+  <p class="p-font">
     <i class="fas fa-tint" style="color:#006a71;"></i> 
     <span class="dht-labels">Humidity</span>
     <span id="humidity">%HUMIDITY%</span>
@@ -164,9 +184,19 @@ setInterval(function ( ) {
 }, 1000);
 
 var pageBtn = document.getElementById("dataPage");
+var navLive = document.getElementById("navLive");
+var navFile = document.getElementById("navFile");
 
 pageBtn.addEventListener( "click", function() {
   window.open(location.protocol + "//" + location.host +  "/data","_self");
+});
+
+navFile.addEventListener( "click", function() {
+  window.open(location.protocol + "//" + location.host +  "/data","_self");
+});
+
+navLive.addEventListener( "click", function() {
+  window.open(location.protocol + "//" + location.host,"_self");
 });
 </script>
 </html>)rawliteral";
@@ -195,12 +225,30 @@ const char data_html[] PROGMEM = R"rawliteral(
       border-collapse: collapse;
       border: 1px solid black;
     }
-    button{
-      margin: 10px;     
+    ul {
+      list-style-type: none;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #333;
     }
+    li {  float: left; }
+    li p {
+      display: block;
+      color: white;
+      text-align: center;
+      padding: 14px 16px;
+      text-decoration: none;
+    }
+    li p:hover {  background-color: #111; }
+    button{ margin: 10px; }
   </style>
 </head>
 <body>
+  <ul>
+    <li><p id="navLive">Live Data</p></li>
+    <li><p id="navFile">File Data</p></li>
+  </ul>
   <h2>File Data</h2>
   <div>
     <button id="refreshButton"><i class="fas fa-sync" style="color:#68b0ab;"></i></button>
@@ -215,6 +263,8 @@ const char data_html[] PROGMEM = R"rawliteral(
 var refreshBtn = document.getElementById("refreshButton");
 var deleteBtn = document.getElementById("deleteButton");
 var backBtn = document.getElementById("backButton");
+var navLive = document.getElementById("navLive");
+var navFile = document.getElementById("navFile");
 
 refreshBtn.addEventListener( "click", function() {
   var xhttp = new XMLHttpRequest(); 
@@ -239,6 +289,14 @@ deleteBtn.addEventListener( "click", function() {
 });
 
 backBtn.addEventListener( "click", function() {
+  window.open(location.protocol + "//" + location.host,"_self");
+});
+
+navFile.addEventListener( "click", function() {
+  window.open(location.protocol + "//" + location.host +  "/data","_self");
+});
+
+navLive.addEventListener( "click", function() {
   window.open(location.protocol + "//" + location.host,"_self");
 });
 </script>
@@ -363,11 +421,13 @@ void loop()
 
   if(WiFi.status() == WL_CONNECTED)
   { 
-    Serial.println(WiFi.localIP());
     digitalWrite (ONBOARD_LED, HIGH);
   }
   
-  secondsCounter += 1;  
+  secondsCounter += 1;
+  float v = getVolage();
+  Serial.print("Voltage: ");
+  Serial.println(v);
   delay(1000);
 }
 
@@ -597,7 +657,6 @@ String getFullTime()
 float getVolage()
 {
   int voltage = analogRead(voltagePin);
-  Serial.println(voltage);
   float volts = 0.00081 * voltage;
   return volts;
 }
